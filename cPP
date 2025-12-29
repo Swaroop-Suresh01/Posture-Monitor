@@ -1,0 +1,106 @@
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_SSD1306.h>
+
+// OLED config
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// MPU6050 object
+Adafruit_MPU6050 mpu;
+
+// Pins
+#define FLEX_PIN 34
+#define LED_GOOD 15
+#define LED_WORSE 2
+#define LED_BAD 4
+
+void setup() {
+  Serial.begin(115200);
+
+  // LED setup
+  pinMode(LED_GOOD, OUTPUT);
+  pinMode(LED_WORSE, OUTPUT);
+  pinMode(LED_BAD, OUTPUT);
+
+  // I2C init (DO NOT redeclare Wire)
+  Wire.begin(21, 22);
+
+  // MPU6050 init
+  if (!mpu.begin()) {
+    Serial.println("MPU6050 not found!");
+    while (1);
+  }
+
+  // OLED init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found!");
+    while (1);
+  }
+
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+}
+
+void loop() {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Neck angle calculation
+  float neckAngle = atan2(a.acceleration.x, a.acceleration.z) * 180 / PI;
+
+  // Backbone (flex sensor via pot)
+  int flexValue = analogRead(FLEX_PIN);
+
+  String neckStatus, backStatus, overall;
+
+  // Neck posture logic
+  if (abs(neckAngle) <= 10)
+    neckStatus = "Good";
+  else if (abs(neckAngle) <= 20)
+    neckStatus = "Worse";
+  else
+    neckStatus = "Correction";
+
+  // Backbone posture logic
+  if (flexValue < 1400)
+    backStatus = "Good";
+  else if (flexValue < 2600)
+    backStatus = "Worse";
+  else
+    backStatus = "Correction";
+
+  // Overall posture decision
+  if (neckStatus == "Correction" || backStatus == "Correction")
+    overall = "NEED CORRECTION";
+  else if (neckStatus == "Worse" || backStatus == "Worse")
+    overall = "WORSE";
+  else
+    overall = "GOOD";
+
+  // LED control
+  digitalWrite(LED_GOOD, overall == "GOOD");
+  digitalWrite(LED_WORSE, overall == "WORSE");
+  digitalWrite(LED_BAD, overall == "NEED CORRECTION");
+
+  // OLED display
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+
+  display.print("Neck: ");
+  display.println(neckStatus);
+
+  display.print("Backbone: ");
+  display.println(backStatus);
+
+  display.println();
+  display.setTextSize(2);
+  display.println(overall);
+
+  display.display();
+
+  delay(500);
+}
